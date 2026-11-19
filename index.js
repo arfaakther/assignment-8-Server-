@@ -333,6 +333,36 @@ app.delete("/events/:id/join", verifyToken, async (req, res) => {
   }
 });
 
+// upcoming events
+
+
+app.get("/upcoming-events", verifyToken, async (req, res) => {
+  try {
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Dhaka",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    const events = await eventsCollection
+      .find({
+        date: { $gte: today },
+      })
+      .sort({ date: 1 })
+      .limit(6)
+      .toArray();
+
+    res.send(events);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({
+      message: "Failed to fetch upcoming events",
+    });
+  }
+});
+
+
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
 });
