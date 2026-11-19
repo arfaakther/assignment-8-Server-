@@ -1,28 +1,32 @@
-import express from "express"; 
-const app = express(); 
+
+import express from "express";
+const app = express();
 const port = 8000;
 
 import "dotenv/config";
-import { ObjectId } from "mongodb";
+import { ObjectId, MongoClient } from "mongodb";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import cors from "cors"; 
-import { MongoClient } from "mongodb"; 
-const client = new MongoClient(process.env.MONGODB_URI); 
-export async function connectToMongoDB() { 
-try { 
-await client.connect(); 
-console.log("You successfully connected to MongoDB!"); 
-return client; 
-} catch (err) { 
-console.dir(err); 
-} 
-} 
+import cors from "cors";
+
+const client = new MongoClient(process.env.MONGODB_URI);
+
+export async function connectToMongoDB() {
+  try {
+    await client.connect();
+    console.log("You successfully connected to MongoDB!");
+    return client;
+  } catch (err) {
+    console.dir(err);
+    throw err;
+  }
+}
 
 app.use(cors());
 app.use(express.json());
 
 const mongoClient = await connectToMongoDB();
 const db = mongoClient.db("charity");
+
 const eventsCollection = db.collection("events");
 const joinedEventsCollection = db.collection("joinedEvents");
 
@@ -32,6 +36,7 @@ await joinedEventsCollection.createIndex(
   { unique: true }
 );
 
+// Verify user token
 const verifyToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -49,7 +54,6 @@ const verifyToken = async (req, res, next) => {
     const { payload } = await jwtVerify(token, JWKS);
 
     req.user = payload;
-
     next();
   } catch (error) {
     console.error("Token verification failed:", error);
@@ -57,7 +61,12 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
-// all data get
+// Home
+app.get("/", (req, res) => {
+  res.send("Server running");
+});
+
+// Create event
 app.post("/events", verifyToken, async (req, res) => {
   try {
     const data = req.body;
@@ -78,30 +87,42 @@ app.post("/events", verifyToken, async (req, res) => {
   }
 });
 
-app.get("/events", async (req, res) => { 
-    const event = await eventsCollection.find({}).toArray();
- res.send(event);
-
-}); 
-app.get("/", async (req, res) => { 
-    
- res.send("server running");
-
-}); 
-
-// single data get
-
-app.get("/events/:id", verifyToken, async (req, res) => {
-  const id = req.params.id;
-
-  const event = await eventsCollection.findOne({
-    _id: new ObjectId(id),
-  });
-
-  res.send(event);
+// Get all events
+app.get("/events", async (req, res) => {
+  try {
+    const events = await eventsCollection.find({}).toArray();
+    res.send(events);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Failed to fetch events" });
+  }
 });
 
-// joined event
+// Get single event
+app.get("/events/:id", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: "Invalid event ID" });
+    }
+
+    const event = await eventsCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!event) {
+      return res.status(404).send({ message: "Event not found" });
+    }
+
+    res.send(event);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Failed to fetch event" });
+  }
+});
+
+// Join event
 app.post("/events/:id/join", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -124,7 +145,7 @@ app.post("/events/:id/join", verifyToken, async (req, res) => {
       return res.status(404).send({ message: "Event not found" });
     }
 
-    const result = await joinedEventsCollection.updateOne(
+    await joinedEventsCollection.updateOne(
       {
         eventId: new ObjectId(id),
         userId: userId,
@@ -150,6 +171,7 @@ app.post("/events/:id/join", verifyToken, async (req, res) => {
   }
 });
 
+// Check joined status
 app.get("/events/:id/join", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -170,6 +192,7 @@ app.get("/events/:id/join", verifyToken, async (req, res) => {
   }
 });
 
+// Get joined events
 app.get("/joined-events", verifyToken, async (req, res) => {
   try {
     const joinedEvents = await joinedEventsCollection
@@ -205,8 +228,7 @@ app.get("/joined-events", verifyToken, async (req, res) => {
   }
 });
 
-// my-events
-
+// Get only my created events
 app.get("/my-events", verifyToken, async (req, res) => {
   try {
     const events = await eventsCollection
@@ -220,11 +242,7 @@ app.get("/my-events", verifyToken, async (req, res) => {
   }
 });
 
-// get by name
-
-
-
-// update data
+// Update only my own event
 app.patch("/events/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -233,13 +251,15 @@ app.patch("/events/:id", verifyToken, async (req, res) => {
       return res.status(400).send({ message: "Invalid event ID" });
     }
 
+    const { _id, creatorId, createdAt, ...updateData } = req.body;
+
     const result = await eventsCollection.updateOne(
       {
         _id: new ObjectId(id),
         creatorId: req.user.sub,
       },
       {
-        $set: req.body,
+        $set: updateData,
       }
     );
 
@@ -255,7 +275,8 @@ app.patch("/events/:id", verifyToken, async (req, res) => {
     res.status(500).send({ message: "Failed to update event" });
   }
 });
-// delete data
+
+// Delete only my own event
 app.delete("/events/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -282,6 +303,7 @@ app.delete("/events/:id", verifyToken, async (req, res) => {
   }
 });
 
+// Leave event
 app.delete("/events/:id/join", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -311,7 +333,6 @@ app.delete("/events/:id/join", verifyToken, async (req, res) => {
   }
 });
 
-
-app.listen(port, () => { 
-console.log(`Example app listening on port ${port}`); 
-}); 
+app.listen(port, () => {
+  console.log(`Example app listening on port ${port}`);
+});
