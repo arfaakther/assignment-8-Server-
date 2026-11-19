@@ -282,6 +282,35 @@ app.delete("/events/:id", verifyToken, async (req, res) => {
   }
 });
 
+app.delete("/events/:id/join", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: "Invalid event ID" });
+    }
+
+    const result = await joinedEventsCollection.deleteOne({
+      eventId: new ObjectId(id),
+      userId: req.user.sub,
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({
+        message: "You have not joined this event",
+      });
+    }
+
+    res.send({
+      message: "You left this event successfully",
+      joined: false,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Failed to leave event" });
+  }
+});
+
 
 app.listen(port, () => { 
 console.log(`Example app listening on port ${port}`); 
