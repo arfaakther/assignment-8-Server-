@@ -1,12 +1,12 @@
 
 import express from "express";
-const app = express();
-const port = 8000;
-
 import "dotenv/config";
 import { ObjectId, MongoClient } from "mongodb";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import cors from "cors";
+
+const app = express();
+const port = 8000;
 
 const client = new MongoClient(process.env.MONGODB_URI);
 
@@ -16,7 +16,7 @@ export async function connectToMongoDB() {
     console.log("You successfully connected to MongoDB!");
     return client;
   } catch (err) {
-    console.dir(err);
+    console.error(err);
     throw err;
   }
 }
@@ -30,7 +30,7 @@ const db = mongoClient.db("charity");
 const eventsCollection = db.collection("events");
 const joinedEventsCollection = db.collection("joinedEvents");
 
-// Prevent the same user joining the same event twice
+// Prevent the same user from joining the same event twice
 await joinedEventsCollection.createIndex(
   { eventId: 1, userId: 1 },
   { unique: true }
@@ -66,7 +66,7 @@ app.get("/", (req, res) => {
   res.send("Server running");
 });
 
-// Create event
+// Create event (Protected)
 app.post("/events", verifyToken, async (req, res) => {
   try {
     const data = req.body;
@@ -87,7 +87,7 @@ app.post("/events", verifyToken, async (req, res) => {
   }
 });
 
-// Get all events
+// Get all events (Public)
 app.get("/events", async (req, res) => {
   try {
     const events = await eventsCollection.find({}).toArray();
@@ -98,8 +98,8 @@ app.get("/events", async (req, res) => {
   }
 });
 
-// Get single event
-app.get("/events/:id", verifyToken, async (req, res) => {
+// Get single event (Public)
+app.get("/events/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -122,7 +122,7 @@ app.get("/events/:id", verifyToken, async (req, res) => {
   }
 });
 
-// Join event
+// Join event (Protected)
 app.post("/events/:id/join", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -171,7 +171,7 @@ app.post("/events/:id/join", verifyToken, async (req, res) => {
   }
 });
 
-// Check joined status
+// Check joined status (Protected)
 app.get("/events/:id/join", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -192,7 +192,7 @@ app.get("/events/:id/join", verifyToken, async (req, res) => {
   }
 });
 
-// Get joined events
+// Get joined events (Protected)
 app.get("/joined-events", verifyToken, async (req, res) => {
   try {
     const joinedEvents = await joinedEventsCollection
@@ -228,7 +228,7 @@ app.get("/joined-events", verifyToken, async (req, res) => {
   }
 });
 
-// Get only my created events
+// Get only my created events (Protected)
 app.get("/my-events", verifyToken, async (req, res) => {
   try {
     const events = await eventsCollection
@@ -242,7 +242,7 @@ app.get("/my-events", verifyToken, async (req, res) => {
   }
 });
 
-// Update only my own event
+// Update only my own event (Protected)
 app.patch("/events/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -276,7 +276,7 @@ app.patch("/events/:id", verifyToken, async (req, res) => {
   }
 });
 
-// Delete only my own event
+// Delete only my own event (Protected)
 app.delete("/events/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -303,7 +303,7 @@ app.delete("/events/:id", verifyToken, async (req, res) => {
   }
 });
 
-// Leave event
+// Leave event (Protected)
 app.delete("/events/:id/join", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -333,10 +333,8 @@ app.delete("/events/:id/join", verifyToken, async (req, res) => {
   }
 });
 
-// upcoming events
-
-
-app.get("/upcoming-events", verifyToken, async (req, res) => {
+// Get 6 upcoming events (Public - No authentication required)
+app.get("/upcoming-events", async (req, res) => {
   try {
     const today = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Dhaka",
@@ -362,7 +360,8 @@ app.get("/upcoming-events", verifyToken, async (req, res) => {
   }
 });
 
-
+// Start server
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
 });
+
