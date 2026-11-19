@@ -99,7 +99,7 @@ app.get("/events", async (req, res) => {
 });
 
 // Get single event (Public)
-app.get("/events/:id", async (req, res) => {
+app.get("/events/:id",verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
