@@ -29,6 +29,10 @@ const db = mongoClient.db("charity");
 
 const eventsCollection = db.collection("events");
 const joinedEventsCollection = db.collection("joinedEvents");
+const usersCollection = db.collection("user");
+
+
+
 
 // Prevent the same user from joining the same event twice
 await joinedEventsCollection.createIndex(
@@ -60,6 +64,94 @@ const verifyToken = async (req, res, next) => {
     return res.status(401).send({ msg: "Invalid token!" });
   }
 };
+
+// Get all volunteers of a specific event (Protected)
+app.get("/events/:id/volunteers", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: "Invalid event ID" });
+    }
+
+    const volunteers = await joinedEventsCollection
+      .aggregate([
+        {
+          $match: {
+            eventId: new ObjectId(id),
+          },
+        },
+        {
+          $lookup: {
+            from: "user",
+            let: { joinedUserId: "$userId" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $or: [
+                      {
+                        $eq: [
+                          { $toString: "$_id" },
+                          "$$joinedUserId",
+                        ],
+                      },
+                      {
+                        $eq: ["$id", "$$joinedUserId"],
+                      },
+                    ],
+                  },
+                },
+              },
+              {
+                $project: {
+                  _id: 0,
+                  name: 1,
+                  image: 1,
+                  email: 1,
+                },
+              },
+            ],
+            as: "volunteer",
+          },
+        },
+        {
+          $unwind: {
+            path: "$volunteer",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            userId: 1,
+            name: {
+              $ifNull: ["$volunteer.name", "$userEmail"],
+            },
+            image: {
+              $ifNull: ["$volunteer.image", null],
+            },
+            email: {
+              $ifNull: ["$volunteer.email", "$userEmail"],
+            },
+            joinedAt: 1,
+          },
+        },
+      ])
+      .toArray();
+
+    res.send({
+      count: volunteers.length,
+      volunteers,
+    });
+  } catch (error) {
+    console.error("Failed to fetch volunteers:", error);
+    res.status(500).send({
+      message: "Failed to fetch volunteers",
+    });
+  }
+});
+
 
 // Home
 app.get("/", (req, res) => {
